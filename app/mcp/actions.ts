@@ -1,4 +1,4 @@
-"use server";
+// "use server"; // disabled for static export
 import {
   createClient,
   executeRequest,

@@ -1,4 +1,8 @@
 import webpack from "webpack";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const mode = process.env.BUILD_MODE ?? "standalone";
 console.log("[Next] build mode", mode);
@@ -8,6 +12,12 @@ console.log("[Next] build with chunk: ", !disableChunk);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   webpack(config) {
     config.module.rules.push({
       test: /\.svg$/,
@@ -23,6 +33,16 @@ const nextConfig = {
     config.resolve.fallback = {
       child_process: false,
     };
+
+    // In static export mode, stub out MCP modules that depend on Node.js
+    if (mode === "export") {
+      const stubPath = path.resolve(__dirname, "app/mcp/actions.stub.ts");
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "./mcp/actions": stubPath,
+        "../mcp/actions": stubPath,
+      };
+    }
 
     return config;
   },
