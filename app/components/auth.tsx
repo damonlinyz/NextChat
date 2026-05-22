@@ -20,6 +20,8 @@ import {
 } from "../utils/auth-settings-events";
 import clsx from "clsx";
 
+const MYBRAIN_API_BASE = "https://mybrain.onedrivememory.com";
+
 const storage = safeLocalStorage();
 
 export function AuthPage() {
@@ -32,12 +34,56 @@ export function AuthPage() {
     window.location.href = SAAS_CHAT_URL;
   };
 
+  const [githubLoading, setGithubLoading] = useState(false);
+
   const resetAccessCode = () => {
     accessStore.update((access) => {
       access.openaiApiKey = "";
       access.accessCode = "";
     });
-  }; // Reset access code to empty string
+  };
+
+  const loginWithGitHub = async () => {
+    setGithubLoading(true);
+    try {
+      const redirectUrl = `${window.location.origin}/auth/mybrain-callback`;
+      const res = await fetch(
+        `${MYBRAIN_API_BASE}/api/auth/providers/github/start`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ redirect_url: redirectUrl }),
+        },
+      );
+      const json = await res.json();
+      const authUrl = json.data?.authorization_url || json.authorization_url;
+      if (authUrl) {
+        window.location.href = authUrl;
+      } else {
+        console.error("[MyBrain] No authorization_url in response:", json);
+      }
+    } catch (e) {
+      console.error("[MyBrain] GitHub OAuth start failed:", e);
+    } finally {
+      setGithubLoading(false);
+    }
+  };
+
+  // Check for MyBrain token stored by callback page
+  useEffect(() => {
+    const token = storage.getItem("mybrain-auth-token");
+    if (token) {
+      const refreshToken = storage.getItem("mybrain-auth-refresh") || "";
+      accessStore.update((access) => {
+        access.mybrainToken = token;
+        access.mybrainRefreshToken = refreshToken;
+      });
+      storage.removeItem("mybrain-auth-token");
+      storage.removeItem("mybrain-auth-refresh");
+      goChat();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (getClientConfig()?.isApp) {
@@ -62,6 +108,30 @@ export function AuthPage() {
 
       <div className={styles["auth-title"]}>{Locale.Auth.Title}</div>
       <div className={styles["auth-tips"]}>{Locale.Auth.Tips}</div>
+
+      <div className={styles["auth-actions"]}>
+        <IconButton
+          text={githubLoading ? "Connecting..." : "Login with GitHub"}
+          type="primary"
+          onClick={loginWithGitHub}
+          disabled={githubLoading}
+        />
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          margin: "2vh 0",
+          width: "100%",
+        }}
+      >
+        <div style={{ flex: 1, height: "1px", background: "#e0e0e0" }} />
+        <span style={{ padding: "0 12px", color: "#999", fontSize: "12px" }}>
+          or
+        </span>
+        <div style={{ flex: 1, height: "1px", background: "#e0e0e0" }} />
+      </div>
 
       <PasswordInput
         style={{ marginTop: "3vh", marginBottom: "3vh" }}

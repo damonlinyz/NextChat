@@ -34,6 +34,12 @@ import { createPersistStore } from "../utils/store";
 import { estimateTokenLength } from "../utils/token";
 import { ModelConfig, ModelType, useAppConfig } from "./config";
 import { useAccessStore } from "./access";
+import {
+  ensureMyBrainSession,
+  syncMessageToMyBrain,
+  triggerMemoryExtraction,
+} from "../client/mybrain-sync";
+import { getCognitiveContext } from "../client/mybrain-context";
 import { collectModelsWithDefaultModel } from "../utils/model";
 import { createEmptyMask, Mask } from "./mask";
 import { executeMcpAction, getAllTools, isMcpEnabled } from "../mcp/actions";
@@ -456,6 +462,29 @@ export const useChatStore = createPersistStore(
           ]);
         });
 
+        // Sync to MyBrain (async, non-blocking)
+        const token = useAccessStore.getState().mybrainToken;
+        if (token) {
+          const title = session.topic || content.slice(0, 50);
+          const textContent =
+            typeof mContent === "string"
+              ? mContent
+              : mContent
+                  .filter((c) => c.type === "text")
+                  .map((c) => c.text)
+                  .join("\n");
+          ensureMyBrainSession(
+            session.id,
+            title,
+            modelConfig.model,
+            modelConfig.providerName,
+          ).then((mbSessionId) => {
+            if (mbSessionId) {
+              syncMessageToMyBrain(mbSessionId, "user", textContent);
+            }
+          });
+        }
+
         const api: ClientApi = getClientApi(modelConfig.providerName);
         // make request
         api.llm.chat({
@@ -478,6 +507,28 @@ export const useChatStore = createPersistStore(
               get().onNewMessage(botMessage, session);
             }
             ChatControllerPool.remove(session.id, botMessage.id);
+
+            // Sync assistant message to MyBrain (async, non-blocking)
+            const mbToken = useAccessStore.getState().mybrainToken;
+            if (mbToken) {
+              ensureMyBrainSession(
+                session.id,
+                session.topic || "",
+                modelConfig.model,
+                modelConfig.providerName,
+              ).then((sid) => {
+                if (sid && message) {
+                  syncMessageToMyBrain(
+                    sid,
+                    "assistant",
+                    message,
+                    modelConfig.model,
+                  );
+                  // Trigger async memory extraction after sync
+                  setTimeout(() => triggerMemoryExtraction(sid), 2000);
+                }
+              });
+            }
           },
           onBeforeTool(tool: ChatMessageTool) {
             (botMessage.tools = botMessage?.tools || []).push(tool);
@@ -629,8 +680,23 @@ export const useChatStore = createPersistStore(
           reversedRecentMessages.push(msg);
         }
         // concat all messages
+        // Fetch MyBrain cognitive context (async but awaited here)
+        let myBrainContextPrompts: ChatMessage[] = [];
+        if (useAccessStore.getState().mybrainToken) {
+          const ctx = await getCognitiveContext();
+          if (ctx) {
+            myBrainContextPrompts = [
+              createMessage({
+                role: "system",
+                content: `[User Cognitive Context — use this to personalize responses]\n${ctx}`,
+              }),
+            ];
+          }
+        }
+
         const recentMessages = [
           ...systemPrompts,
+          ...myBrainContextPrompts,
           ...longTermMemoryPrompts,
           ...contextPrompts,
           ...reversedRecentMessages.reverse(),

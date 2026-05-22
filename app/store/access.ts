@@ -64,6 +64,8 @@ const DEFAULT_AI302_URL = isApp ? AI302_BASE_URL : ApiPath["302.AI"];
 
 const DEFAULT_ACCESS_STATE = {
   accessCode: "",
+  mybrainToken: "",
+  mybrainRefreshToken: "",
   useCustomConfig: false,
 
   provider: ServiceProvider.OpenAI,
@@ -228,6 +230,9 @@ export const useAccessStore = createPersistStore(
 
     isAuthorized() {
       this.fetch();
+
+      // MyBrain JWT takes priority
+      if (get().mybrainToken) return true;
 
       // has token or has code or disabled access control
       return (

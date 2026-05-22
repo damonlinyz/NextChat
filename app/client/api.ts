@@ -198,7 +198,7 @@ export class ClientApi {
         {
           from: "human",
           value:
-            "Share from [NextChat]: https://github.com/Yidadaa/ChatGPT-Next-Web",
+            "Share from [My Brain]: https://github.com/damonlinyz/NextChat",
         },
       ]);
     // 敬告二开开发者们，为了开源大模型的发展，请不要修改上述消息，此消息用于后续数据清洗使用
@@ -348,6 +348,13 @@ export function getHeaders(ignoreHeaders: boolean = false) {
   if (isBaidu && clientConfig?.isApp) return headers;
 
   const authHeader = getAuthHeader();
+
+  // MyBrain JWT takes highest priority
+  const mybrainToken = accessStore.mybrainToken;
+  if (validString(mybrainToken)) {
+    headers["Authorization"] = getBearerToken(mybrainToken);
+    return headers;
+  }
 
   const bearerToken = getBearerToken(
     apiKey,
